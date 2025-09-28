@@ -1,0 +1,103 @@
+# UmaDecryptor - UMA游戏数据解密工具
+
+## .NET Core / .NET 8
+bin/
+obj/
+out/
+publish/
+
+## Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.cache
+*.docstates
+
+## Build Results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## 临时文件和日志
+*.tmp
+*.temp
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+## 测试结果
+TestResults/
+*.trx
+*.coverage
+coverage*.json
+coverage*.xml
+coverage*.info
+*.coveragexml
+
+## 包管理器
+packages/
+.nuget/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## 数据库文件 (测试用)
+*.db
+*.sqlite
+*.sqlite3
+test_meta*
+
+## 解密输出目录
+decrypted/
+decypyed/
+*_decrypted/
+*_output/
+*_decoded/
+dat_decrypted/
+uma_output/
+
+## 测试数据
+test_data/
+sample_data/
+test_files/
+*.test
+
+## 敏感信息
+*.key
+*.secret
+config.json
+secrets.json
+
+## Windows 系统文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+## macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+## 重要: 保留必要的项目文件
+!sqlite3mc_x64.dll
+!README.md
+!LICENSE
+!icon.ico

@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Company>UmaDecryptor</Company>
+    <Product>UmaDecryptor</Product>
+    <Description>UMA game data decryption tool</Description>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommandLineParser" Version="2.9.1" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Include sqlite3mc_x64.dll from project root directory -->
+    <None Include="sqlite3mc_x64.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <!-- Include application icon as Content -->
+    <Content Include="icon.ico">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Fallback: Copy from UmaViewer if sqlite3mc_x64.dll doesn't exist in project root -->
+  <Target Name="EnsureSqlite3MC" BeforeTargets="Build">
+    <ItemGroup>
+      <Sqlite3Source Include="E:\Documents\UmaViewer\Assets\Plugins\sqlite3mc_x64.dll" />
+    </ItemGroup>
+    
+    <Copy Condition="!Exists('sqlite3mc_x64.dll') AND Exists('@(Sqlite3Source)')" 
+          SourceFiles="@(Sqlite3Source)" 
+          DestinationFiles="sqlite3mc_x64.dll" 
+          SkipUnchangedFiles="true" />
+    
+    <Message Condition="!Exists('sqlite3mc_x64.dll') AND !Exists('@(Sqlite3Source)')" 
+             Text="WARNING: sqlite3mc_x64.dll not found. Please run copy_sqlite3mc.bat first." 
+             Importance="high" />
+  </Target>
+
+</Project>
