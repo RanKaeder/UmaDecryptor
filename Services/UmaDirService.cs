@@ -71,7 +71,7 @@ public class UmaDirService
             _logger.LogInformation("📁 Step 2: Copying master folder...");
             var masterSourcePath = Path.Combine(options.InputPath, "master");
             var masterOutputPath = Path.Combine(outputPath, "master");
-            await CopyMasterFolderAsync(masterSourcePath, masterOutputPath);
+            await CopyMasterFolderAsync(masterSourcePath, masterOutputPath, !options.Overwrite);
 
             // 第三步：解密 dat 文件夹
             _logger.LogInformation("🔓 Step 3: Decrypting dat folder...");
@@ -150,7 +150,7 @@ public class UmaDirService
     /// <summary>
     /// 拷贝 master 文件夹
     /// </summary>
-    private async Task CopyMasterFolderAsync(string sourcePath, string outputPath)
+    private async Task CopyMasterFolderAsync(string sourcePath, string outputPath, bool skipExisting = false)
     {
         if (!Directory.Exists(sourcePath))
         {
@@ -163,10 +163,17 @@ public class UmaDirService
             try
             {
                 // 递归拷贝所有文件和子目录
-                CopyDirectory(sourcePath, outputPath, true);
+                var (copiedFiles, skippedFiles) = CopyDirectory(sourcePath, outputPath, true, skipExisting);
                 
-                var files = Directory.GetFiles(outputPath, "*", SearchOption.AllDirectories);
-                _logger.LogInformation("✅ Copied master folder: {FileCount} files", files.Length);
+                if (skipExisting && skippedFiles > 0)
+                {
+                    _logger.LogInformation("✅ Master folder: {CopiedFiles} files copied, {SkippedFiles} files skipped", 
+                        copiedFiles, skippedFiles);
+                }
+                else
+                {
+                    _logger.LogInformation("✅ Copied master folder: {FileCount} files", copiedFiles);
+                }
             }
             catch (Exception ex)
             {
@@ -202,7 +209,8 @@ public class UmaDirService
                 OutputPath = datOutputPath,
                 MetaPath = metaPath,
                 DatabaseKey = options.DatabaseKey,
-                MaxThreads = options.MaxThreads // 传递线程数选项
+                MaxThreads = options.MaxThreads, // 传递线程数选项
+                Verbose = options.Verbose
             };
 
             int result = await _decryptDatService.ExecuteAsync(datOptions);
@@ -222,7 +230,7 @@ public class UmaDirService
     /// <summary>
     /// 递归拷贝目录
     /// </summary>
-    private static void CopyDirectory(string sourceDir, string destinationDir, bool recursive)
+    private (int copiedFiles, int skippedFiles) CopyDirectory(string sourceDir, string destinationDir, bool recursive, bool skipExisting = false)
     {
         // 获取源目录信息
         var dir = new DirectoryInfo(sourceDir);
@@ -237,11 +245,26 @@ public class UmaDirService
         // 创建目标目录
         Directory.CreateDirectory(destinationDir);
 
+        int copiedFiles = 0;
+        int skippedFiles = 0;
+
         // 拷贝所有文件到目标目录
         foreach (FileInfo file in dir.GetFiles())
         {
             string targetFilePath = Path.Combine(destinationDir, file.Name);
+            
+            if (skipExisting && File.Exists(targetFilePath))
+            {
+                skippedFiles++;
+                if (_logger.IsEnabled(LogLevel.Debug))
+                {
+                    _logger.LogDebug("⏭️ Skipping existing file: {FileName}", file.Name);
+                }
+                continue;
+            }
+            
             file.CopyTo(targetFilePath, true);
+            copiedFiles++;
         }
 
         // 如果需要递归拷贝子目录
@@ -250,8 +273,12 @@ public class UmaDirService
             foreach (DirectoryInfo subDir in dirs)
             {
                 string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-                CopyDirectory(subDir.FullName, newDestinationDir, true);
+                var (subCopied, subSkipped) = CopyDirectory(subDir.FullName, newDestinationDir, true, skipExisting);
+                copiedFiles += subCopied;
+                skippedFiles += subSkipped;
             }
         }
+
+        return (copiedFiles, skippedFiles);
     }
 }

@@ -23,6 +23,9 @@ public class DecryptDatOptions
     [Option('t', "threads", Required = false, HelpText = "并行处理线程数 (默认: CPU核心数)")]
     public int? MaxThreads { get; set; }
 
+    [Option("overwrite", Required = false, HelpText = "覆盖已存在的文件 (全量更新模式)")]
+    public bool Overwrite { get; set; } = false;
+
     [Option('v', "verbose", Required = false, HelpText = "显示详细日志")]
     public bool Verbose { get; set; }
 }

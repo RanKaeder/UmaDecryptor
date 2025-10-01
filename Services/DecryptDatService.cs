@@ -28,10 +28,21 @@ public class DecryptDatService
     {
         try
         {
+            // 计算是否跳过已存在文件：如果设置了 overwrite，则不跳过
+            bool skipExisting = !options.Overwrite;
+
             _logger.LogInformation("🚀 Starting dat files decryption");
             _logger.LogInformation("📂 Input path: {InputPath}", options.InputPath);
             _logger.LogInformation("📁 Output path: {OutputPath}", options.OutputPath);
             _logger.LogInformation("🗃️ Meta database: {MetaPath}", options.MetaPath);
+            if (skipExisting)
+            {
+                _logger.LogInformation("⏭️ Skip existing files: enabled (incremental mode)");
+            }
+            else
+            {
+                _logger.LogInformation("🔄 Overwrite mode: processing all files");
+            }
 
             // 验证输入路径
             if (!Directory.Exists(options.InputPath))
@@ -61,18 +72,24 @@ public class DecryptDatService
             int processedCount = 0;
             int successCount = 0;
             int errorCount = 0;
+            int skippedCount = 0;
 
-            await ProcessDatDirectoryAsync(options.InputPath, options.OutputPath, fileKeyMap, options,
-                (processed, success, error) => 
+            await ProcessDatDirectoryAsync(options.InputPath, options.OutputPath, fileKeyMap, options, skipExisting,
+                (processed, success, error, skipped) => 
                 {
                     processedCount = processed;
                     successCount = success;
                     errorCount = error;
+                    skippedCount = skipped;
                 });
 
             _logger.LogInformation("🎉 Decryption completed!");
             _logger.LogInformation("📊 Total processed: {ProcessedCount}", processedCount);
             _logger.LogInformation("✅ Successful: {SuccessCount}", successCount);
+            if (skippedCount > 0)
+            {
+                _logger.LogInformation("⏭️ Skipped: {SkippedCount}", skippedCount);
+            }
             _logger.LogInformation("❌ Errors: {ErrorCount}", errorCount);
 
             return errorCount > 0 ? 1 : 0;
@@ -257,12 +274,13 @@ public class DecryptDatService
     /// 递归处理输入目录中的所有文件（并行处理）
     /// </summary>
     private async Task ProcessDatDirectoryAsync(string inputDir, string outputDir, 
-        Dictionary<string, long> fileKeyMap, DecryptDatOptions options, Action<int, int, int> progressCallback)
+        Dictionary<string, long> fileKeyMap, DecryptDatOptions options, bool skipExisting, Action<int, int, int, int> progressCallback)
     {
         // 线程安全的计数器
         int processedCount = 0;
         int successCount = 0;
         int errorCount = 0;
+        int skippedCount = 0;
         var lockObj = new object();
 
         // 递归遍历所有文件（不限制目录结构）
@@ -273,7 +291,7 @@ public class DecryptDatService
         if (allFiles.Length == 0)
         {
             _logger.LogWarning("⚠️ No files found in input directory: {InputDir}", inputDir);
-            progressCallback(0, 0, 0);
+            progressCallback(0, 0, 0, 0);
             return;
         }
 
@@ -294,20 +312,30 @@ public class DecryptDatService
             {
                 await Task.Delay(2000); // 每2秒报告一次进度
                 
-                int currentProcessed, currentSuccess, currentError;
+                int currentProcessed, currentSuccess, currentError, currentSkipped;
                 lock (lockObj)
                 {
                     currentProcessed = processedCount;
                     currentSuccess = successCount;
                     currentError = errorCount;
+                    currentSkipped = skippedCount;
                 }
                 
                 if (currentProcessed >= allFiles.Length)
                     break;
                 
-                progressCallback(currentProcessed, currentSuccess, currentError);
-                _logger.LogInformation("📊 Progress: {ProcessedCount}/{TotalCount} files processed (✅{SuccessCount} ❌{ErrorCount})", 
-                    currentProcessed, allFiles.Length, currentSuccess, currentError);
+                progressCallback(currentProcessed, currentSuccess, currentError, currentSkipped);
+                
+                if (currentSkipped > 0)
+                {
+                    _logger.LogInformation("📊 Progress: {ProcessedCount}/{TotalCount} files processed (✅{SuccessCount} ⏭️{SkippedCount} ❌{ErrorCount})", 
+                        currentProcessed, allFiles.Length, currentSuccess, currentSkipped, currentError);
+                }
+                else
+                {
+                    _logger.LogInformation("📊 Progress: {ProcessedCount}/{TotalCount} files processed (✅{SuccessCount} ❌{ErrorCount})", 
+                        currentProcessed, allFiles.Length, currentSuccess, currentError);
+                }
             }
         });
 
@@ -316,7 +344,7 @@ public class DecryptDatService
         {
             Parallel.ForEach(allFiles, parallelOptions, filePath =>
             {
-                int localProcessed = 0, localSuccess = 0, localError = 0;
+                int localProcessed = 0, localSuccess = 0, localError = 0, localSkipped = 0;
                 
                 try
                 {
@@ -326,41 +354,54 @@ public class DecryptDatService
                     // 获取相对路径（用于保持目录结构）
                     string relativePath = Path.GetRelativePath(inputDir, filePath);
                     
-                    // 查找对应的解密密钥
-                    if (!fileKeyMap.TryGetValue(fileName, out long key))
+                    // 构造输出路径（保持相同的目录结构）
+                    string outputFilePath = Path.Combine(outputDir, relativePath);
+                    
+                    // 检查是否需要跳过已存在的文件
+                    if (skipExisting && File.Exists(outputFilePath))
                     {
-                        _logger.LogWarning("⚠️ No decryption key found for file: {FileName} (path: {RelativePath})", 
-                            fileName, relativePath);
-                        localError = 1;
+                        localSkipped = 1;
+                        localProcessed = 1;
+                        
+                        // 在详细模式下显示跳过的文件
+                        if (options.Verbose)
+                        {
+                            _logger.LogDebug("⏭️ Skipping existing file: {RelativePath}", relativePath);
+                        }
                     }
                     else
                     {
-                        // 构造输出路径（保持相同的目录结构）
-                        string outputFilePath = Path.Combine(outputDir, relativePath);
-                        string? outputDirPath = Path.GetDirectoryName(outputFilePath);
-                        
-                        // 确保输出目录存在（线程安全）
-                        if (!string.IsNullOrEmpty(outputDirPath))
+                        // 查找对应的解密密钥
+                        if (!fileKeyMap.TryGetValue(fileName, out long key))
                         {
-                            lock (lockObj)
+                            _logger.LogWarning("⚠️ No decryption key found for file: {FileName} (path: {RelativePath})", 
+                                fileName, relativePath);
+                            localError = 1;
+                        }
+                        else
+                        {
+                            string? outputDirPath = Path.GetDirectoryName(outputFilePath);
+                            
+                            // 确保输出目录存在（线程安全）
+                            if (!string.IsNullOrEmpty(outputDirPath))
                             {
-                                if (!Directory.Exists(outputDirPath))
+                                lock (lockObj)
                                 {
-                                    Directory.CreateDirectory(outputDirPath);
+                                    if (!Directory.Exists(outputDirPath))
+                                    {
+                                        Directory.CreateDirectory(outputDirPath);
+                                    }
                                 }
                             }
-                        }
 
-                        // 解密文件
-                        AssetBundleDecryptor.DecryptFileToFile(filePath, outputFilePath, key);
+                            // 解密文件
+                            AssetBundleDecryptor.DecryptFileToFile(filePath, outputFilePath, key);
+                            
+                            localSuccess = 1;
+                        }
                         
-                        localSuccess = 1;
-                        
-                        // 显示详细进度（前几个文件或debug模式）
-                        // Success - no debug logging needed
+                        localProcessed = 1;
                     }
-                    
-                    localProcessed = 1;
                 }
                 catch (Exception ex)
                 {
@@ -376,12 +417,20 @@ public class DecryptDatService
                     processedCount += localProcessed;
                     successCount += localSuccess;
                     errorCount += localError;
+                    skippedCount += localSkipped;
                     
                     // 显示前几个成功的文件
                     if (localSuccess == 1 && successCount <= 5)
                     {
                         string relativePath = Path.GetRelativePath(inputDir, filePath);
                         _logger.LogInformation("🔓 Decrypted: {RelativePath}", relativePath);
+                    }
+                    
+                    // 显示前几个跳过的文件
+                    if (localSkipped == 1 && skippedCount <= 3)
+                    {
+                        string relativePath = Path.GetRelativePath(inputDir, filePath);
+                        _logger.LogInformation("⏭️ Skipped existing: {RelativePath}", relativePath);
                     }
                 }
             });
@@ -391,11 +440,20 @@ public class DecryptDatService
         await progressReportingTask;
 
         // 最终报告
-        progressCallback(processedCount, successCount, errorCount);
+        progressCallback(processedCount, successCount, errorCount, skippedCount);
         
         _logger.LogInformation("🎉 Parallel decryption completed!");
-        _logger.LogInformation("📊 Final stats: {ProcessedCount} processed, ✅{SuccessCount} success, ❌{ErrorCount} errors", 
-            processedCount, successCount, errorCount);
+        
+        if (skippedCount > 0)
+        {
+            _logger.LogInformation("📊 Final stats: {ProcessedCount} processed, ✅{SuccessCount} success, ⏭️{SkippedCount} skipped, ❌{ErrorCount} errors", 
+                processedCount, successCount, skippedCount, errorCount);
+        }
+        else
+        {
+            _logger.LogInformation("📊 Final stats: {ProcessedCount} processed, ✅{SuccessCount} success, ❌{ErrorCount} errors", 
+                processedCount, successCount, errorCount);
+        }
     }
 
     /// <summary>

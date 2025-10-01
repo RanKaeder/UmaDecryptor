@@ -20,6 +20,9 @@ public class UmaDirOptions
     [Option("info", HelpText = "仅显示目录信息")]
     public bool InfoOnly { get; set; } = false;
 
+    [Option("overwrite", HelpText = "覆盖已存在的文件 (全量更新模式)")]
+    public bool Overwrite { get; set; } = false;
+
     [Option('v', "verbose", HelpText = "启用详细日志")]
     public bool Verbose { get; set; } = false;
 }
