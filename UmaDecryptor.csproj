@@ -23,7 +23,10 @@
 
   <ItemGroup>
     <!-- Include sqlite3mc_x64.dll from project root directory -->
-    <None Include="sqlite3mc_x64.dll">
+    <None Include="sqlite3mc_x64.dll" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="sqlite3mc_x64.so" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <!-- Include application icon as Content -->
